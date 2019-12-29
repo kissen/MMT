@@ -187,6 +187,6 @@ abstract class MagicTest(prefixes: String*) extends Test(
   }
 
   final protected def space(): Unit = {
-    print("\n".repeat(5))
+    print("\n\n\n\n\n")
   }
 }

@@ -7,8 +7,8 @@ import symbols._
 import modules._
 import objects._
 import documents._
-
 import info.kwarc.mmt.lf._
+import sun.reflect.generics.reflectiveObjects.NotImplementedException
 
 case class ELPIError(msg: String) extends Error(msg)
 
@@ -18,6 +18,7 @@ object HelpCons {
 }
 
 object PairCons extends ELPI.Constant("pair")
+object IdCertCons extends ELPI.Constant("idcert")
 
 class ELPIExporter extends Exporter {
   val key = "lf-elpi"
@@ -62,7 +63,8 @@ class ELPIExporter extends Exporter {
                   try {
                     val mainRule = translateRule(c, dr)(new VarCounter)
                     val pr = productRule(c, dr)(new VarCounter) // boilerplate for taking the cartesian product of two helper judgment definitions
-                    List(comment, mainRule, pr)
+                    val idr = idRule(c, dr)(new VarCounter) // boilerplate for taking the cartesian product of two helper judgment definitions
+                    List(comment, mainRule, pr, idr)
                   } catch {case ELPIError(msg) =>
                     fail(msg)
                   }
@@ -149,7 +151,30 @@ class ELPIExporter extends Exporter {
     val e = V(opNameH)(nameExpr :: argsE :_*)
     (name, e)
   }
-  
+
+  /** iterative deepening helper */
+  private def idRule(c: Constant, dr: DeclarativeRule)(implicit vc: VarCounter) : ELPI.Rule = {
+    val parNames = dr.arguments.collect {
+      case RuleParameter(n,_) => n
+    }
+    val assCertName = vc.next(true)
+    val (assNames, assExprs) = dr.arguments.collect {
+      case RuleAssumption(cj) =>
+        val parNames = cj.parameters.map { vd => vd.name }
+        val hypNames = cj.hypotheses.map { a => vc.next(false) }
+        val names = parNames ::: hypNames
+        val res = ELPI.Lambda(names, IdCertCons(V(assCertName)(names)))
+        (assCertName, res)
+    }.unzip
+    val certName = vc.next(true)
+    val res = HelpCons(c.path)(parNames.map(V) ::: assExprs ::: List(IdCertCons(List(certName))) :_*)
+    val cond1 = ELPI.GreaterThan(ELPI.Variable(certName), ELPI.Integer(0))
+    val cond2 = ELPI.Is(ELPI.Variable(assCertName), ELPI.Minus(ELPI.Variable(certName), ELPI.Integer(1)))
+    val r = ELPI.Forall(parNames ::: assNames ::: List(certName), ELPI.Impl(List(cond1, cond2),res))
+    ELPI.Rule(r)
+  }
+
+
   /** boilerplate rule for taking the Cartesian product of two helper predicates for a rule */ 
   private def productRule(c: Constant, dr: DeclarativeRule)(implicit vc: VarCounter) : ELPI.Rule = {
     // for parameters: just the name; for assumptions: the lambda-Prolog judgment and two generated names
@@ -158,9 +183,18 @@ class ELPIExporter extends Exporter {
     }
     val (assNamePairs, assExprs) = dr.arguments.collect {
       case RuleAssumption(cj) =>
+        if (c.path.toString.endsWith("?andI")) {
+          println("cj: " + cj)
+        }
         val (namePair, e) = productRuleConc(cj)
         (namePair, e)
     }.unzip
+
+    if (c.path.toString.endsWith("?andI")) {
+      println("parNames: " + parNames)
+      println("assNamePairs: " + assNamePairs)
+      println("assExprs: " + assExprs)
+    }
     val (assNames1,assNames2) = assNamePairs.unzip
     val certName = vc.next(true)
     // e1: first helper predicate applies to a list of inputs with output certName1
