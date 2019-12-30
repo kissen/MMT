@@ -6,5 +6,6 @@ object ElpiTableauTest extends MagicTest() {
   override def run : Unit = {
     // hl("build MMT/LATIN2 mmt-omdoc") // Register extension
     hl("build MMT/LATIN2 lf-elpi logic") // Register extension
+    hl("build MMT/LATIN2 lf-elpi fundamentals") // Register extension
   }
 }

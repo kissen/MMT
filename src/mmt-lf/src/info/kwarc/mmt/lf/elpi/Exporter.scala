@@ -53,7 +53,10 @@ class ELPIExporter extends Exporter {
               val left2 = HelpCons(c.path)(argNames ::: List(hypName, certName) :_*)
               val ruleE = ELPI.Impl(List(left1,left2),right)
               val rule = ELPI.Rule(ruleE)
-              List(comment, rule)
+              // helper rule for iterative deepening
+              val rightID = HelpCons(c.path)(argNames:::List(hypName,IdCertCons(certName)) :_*)
+              val ruleID = ELPI.Rule(ELPI.Impl(List(), rightID))
+              List(comment, rule, ruleID)
           }
         } else {
           c.tp match {
@@ -163,7 +166,8 @@ class ELPIExporter extends Exporter {
         val parNames = cj.parameters.map { vd => vd.name }
         val hypNames = cj.hypotheses.map { a => vc.next(false) }
         val names = parNames ::: hypNames
-        val res = ELPI.Lambda(names, IdCertCons(V(assCertName)(names)))
+        // val res = ELPI.Lambda(names, IdCertCons(V(assCertName)(names)))
+        val res = ELPI.Lambda(names, IdCertCons(V(assCertName)))
         (assCertName, res)
     }.unzip
     val certName = vc.next(true)
@@ -183,18 +187,10 @@ class ELPIExporter extends Exporter {
     }
     val (assNamePairs, assExprs) = dr.arguments.collect {
       case RuleAssumption(cj) =>
-        if (c.path.toString.endsWith("?andI")) {
-          println("cj: " + cj)
-        }
         val (namePair, e) = productRuleConc(cj)
         (namePair, e)
     }.unzip
 
-    if (c.path.toString.endsWith("?andI")) {
-      println("parNames: " + parNames)
-      println("assNamePairs: " + assNamePairs)
-      println("assExprs: " + assExprs)
-    }
     val (assNames1,assNames2) = assNamePairs.unzip
     val certName = vc.next(true)
     // e1: first helper predicate applies to a list of inputs with output certName1
