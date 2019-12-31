@@ -2,13 +2,11 @@ package info.kwarc.mmt.lf.elpi
 
 import info.kwarc.mmt.api._
 import archives._
-import libraries._
 import symbols._
 import modules._
 import objects._
 import documents._
 import info.kwarc.mmt.lf._
-import sun.reflect.generics.reflectiveObjects.NotImplementedException
 
 case class ELPIError(msg: String) extends Error(msg)
 
@@ -19,6 +17,7 @@ object HelpCons {
 
 object PairCons extends ELPI.Constant("pair")
 object IdCertCons extends ELPI.Constant("idcert")
+object PtCertCons extends ELPI.Constant("ptcert")
 
 class ELPIExporter extends Exporter {
   val key = "lf-elpi"
@@ -56,7 +55,10 @@ class ELPIExporter extends Exporter {
               // helper rule for iterative deepening
               val rightID = HelpCons(c.path)(argNames:::List(hypName,IdCertCons(certName)) :_*)
               val ruleID = ELPI.Rule(ELPI.Impl(List(), rightID))
-              List(comment, rule, ruleID)
+              // helper rule for proof terms
+              val rightPT = HelpCons(c.path)(argNames:::List(hypName,PtCertCons(V(LocalName("i"))(argNames ::: List(hypName) :_*))) :_*)
+              val rulePT = ELPI.Rule(ELPI.Impl(List(), rightPT))
+              List(comment, rule, ruleID, rulePT)
           }
         } else {
           c.tp match {
@@ -66,8 +68,11 @@ class ELPIExporter extends Exporter {
                   try {
                     val mainRule = translateRule(c, dr)(new VarCounter)
                     val pr = productRule(c, dr)(new VarCounter) // boilerplate for taking the cartesian product of two helper judgment definitions
-                    val idr = idRule(c, dr)(new VarCounter) // boilerplate for taking the cartesian product of two helper judgment definitions
-                    List(comment, mainRule, pr, idr)
+                    // helper for iterative deepening
+                    val idr = idRule(c, dr)(new VarCounter)
+                    // helper for proof terms
+                    val ptr = ptRule(c, dr)(new VarCounter)
+                    List(comment, mainRule, pr, idr, ptr)
                   } catch {case ELPIError(msg) =>
                     fail(msg)
                   }
@@ -153,6 +158,26 @@ class ELPIExporter extends Exporter {
     val opNameH = if (hypothesis) opName / hypSuffix else opName 
     val e = V(opNameH)(nameExpr :: argsE :_*)
     (name, e)
+  }
+
+  /** proof term helper */
+  private def ptRule(c: Constant, dr: DeclarativeRule)(implicit vc: VarCounter) : ELPI.Rule = {
+    val parNames = dr.arguments.collect {
+      case RuleParameter(n,_) => n
+    }
+    val assCertName = vc.next(true)
+    val (assNames, assExprs) = dr.arguments.collect {
+      case RuleAssumption(cj) =>
+        val parNames = cj.parameters.map { vd => vd.name }
+        val hypNames = cj.hypotheses.map { a => vc.next(false) }
+        val names = parNames ::: hypNames
+        val res = ELPI.Lambda(names, PtCertCons(V(assCertName)))
+        (assCertName, res)
+    }.unzip
+    val newCert = PtCertCons(V(c.path.name)(parNames.map(V) ::: assNames.map(V) :_*))
+    val res = HelpCons(c.path)(parNames.map(V) ::: assExprs ::: List(newCert) :_*)
+    val r = ELPI.Forall(parNames ::: assNames, ELPI.Impl(List(),res))
+    ELPI.Rule(r)
   }
 
   /** iterative deepening helper */
